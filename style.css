@@ -72,35 +72,99 @@ h3,
     display: flex;
     flex: 1;
     overflow: hidden;
+    flex-direction: column;
+    /* Mobile default: Stack sidebar and feed vertically */
+}
+
+@media (min-width: 768px) {
+    .content-wrapper {
+        flex-direction: row;
+        /* Desktop: Sidebar next to feed */
+    }
 }
 
 /* Sidebar */
+/* Mobile Sidebar (Horizontal Tabs) */
 .sidebar {
-    width: 200px;
-    padding: 1.5rem;
-    overflow-y: auto;
-    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    height: auto;
+    padding: 0.5rem 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-border);
+    position: sticky;
+    top: 0;
+    z-index: 95;
+    background: rgba(10, 10, 10, 0.85);
+    /* Slightly more opaque for sticking */
+    gap: 0.5rem;
+    -ms-overflow-style: none;
+    /* Hide scrollbar IE/Edge */
+    scrollbar-width: none;
+    /* Hide scrollbar Firefox */
+}
+
+/* Ensure the nav inside sidebar acts as the flex container for tabs */
+#folder-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.sidebar::-webkit-scrollbar {
     display: none;
-    /* Hidden on mobile by default, handled later */
+    /* Hide scrollbar Chrome/Safari */
 }
 
 @media (min-width: 768px) {
     .sidebar {
         display: block;
+        width: 200px;
+        height: auto;
+        /* Restored from flex layout overrides */
+        padding: 1.5rem;
+        border-right: 1px solid var(--glass-border);
+        border-bottom: none;
+        position: static;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    /* Reset folder list to block on desktop */
+    #folder-list {
+        display: block;
     }
 }
 
 .folder-item {
-    padding: 0.8rem 0;
-    border-bottom: 1px solid var(--glass-border);
-    cursor: pointer;
-    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
+    font-size: 0.8rem;
     color: var(--text-dim);
     transition: all 0.3s;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    position: relative;
+    flex-shrink: 0;
+    /* Don't shrink chips */
+}
+
+@media (min-width: 768px) {
+    .folder-item {
+        padding: 0.8rem 0;
+        border: none;
+        border-bottom: 1px solid var(--glass-border);
+        border-radius: 0;
+        background: transparent;
+        white-space: normal;
+        font-size: 0.9rem;
+        flex-shrink: 1;
+    }
 }
 
 .folder-item:hover .folder-actions {
@@ -112,11 +176,29 @@ h3,
     transition: opacity 0.3s;
     font-size: 1.2rem;
     padding: 0 0.5rem;
+    display: none;
+    /* Hide on mobile to save space */
+}
+
+@media (min-width: 768px) {
+    .folder-actions {
+        display: block;
+    }
 }
 
 .folder-item.active {
-    color: var(--accent-color);
-    border-bottom-color: var(--accent-color);
+    color: #000;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+@media (min-width: 768px) {
+    .folder-item.active {
+        color: var(--accent-color);
+        background: transparent;
+        border-color: transparent;
+        border-bottom-color: var(--accent-color);
+    }
 }
 
 .source-sublist {
@@ -125,6 +207,14 @@ h3,
     border-left: 1px solid var(--glass-border);
     overflow: hidden;
     transition: max-height 0.3s ease-out;
+    display: none;
+    /* Hide sources on mobile tab view */
+}
+
+@media (min-width: 768px) {
+    .source-sublist {
+        display: block;
+    }
 }
 
 .source-item {
@@ -181,29 +271,31 @@ h3,
     gap: 15px;
 }
 
-/* Random sizes for deconstructed look */
-.span-wide {
-    grid-column: span 2;
-}
+/* Random sizes for deconstructed look - Desktop Only */
+@media (min-width: 768px) {
+    .span-wide {
+        grid-column: span 2;
+    }
 
-.span-tall {
-    grid-row: span 2;
-}
+    .span-tall {
+        grid-row: span 2;
+    }
 
-.span-big {
-    grid-column: span 2;
-    grid-row: span 2;
-}
+    .span-big {
+        grid-column: span 2;
+        grid-row: span 2;
+    }
 
-.span-huge {
-    grid-column: span 2;
-    /* Huge is now just 2x2 for better density, but we'll use 'featured' logic */
-    grid-row: span 2;
-}
+    .span-huge {
+        grid-column: span 2;
+        /* Huge is now just 2x2 for better density, but we'll use 'featured' logic */
+        grid-row: span 2;
+    }
 
-.featured {
-    grid-column: span 2;
-    grid-row: span 2;
+    .featured {
+        grid-column: span 2;
+        grid-row: span 2;
+    }
 }
 
 @media (min-width: 1200px) {
@@ -352,6 +444,33 @@ h3,
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    white-space: nowrap;
+}
+
+/* Compact Mobile Buttons */
+@media (max-width: 767px) {
+
+    .btn-primary,
+    .btn-secondary {
+        height: 32px;
+        padding: 0 0.8rem;
+        font-size: 0.7rem;
+    }
+
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        margin-right: 0.2rem;
+    }
+
+    .btn-icon .icon-svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .actions {
+        gap: 0.2rem;
+    }
 }
 
 .btn-primary:hover,
