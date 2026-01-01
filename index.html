@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Orbit | RSS Reader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700&family=Space+Grotesk:wght@700&family=Syncopate:wght@700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+</head>
+
+<body class="theme-default">
+    <div id="app">
+        <header class="top-bar">
+            <div class="logo">ORBIT</div>
+            <div class="actions">
+                <button id="refresh-btn" title="Refresh" class="btn-icon"></button>
+                <button id="hide-read-btn" title="Hide Read" class="btn-icon"></button>
+                <button id="mark-all-read-btn" title="Mark all as read" class="btn-icon"></button>
+                <button id="add-folder-btn" title="Add Folder" class="btn-secondary">ADD FOLDER</button>
+                <button id="add-source-btn" title="Add Source" class="btn-primary">ADD SOURCE</button>
+            </div>
+        </header>
+
+        <main class="content-wrapper">
+            <aside class="sidebar" id="sidebar">
+                <nav id="folder-list">
+                    <!-- Folders will be injected here -->
+                </nav>
+            </aside>
+
+            <section class="feed-container">
+                <div id="feed-grid" class="grid-layout">
+                    <!-- Article tiles will be injected here -->
+                </div>
+            </section>
+        </main>
+
+        <button id="settings-btn" class="btn-settings" title="Settings">⚙️</button>
+
+        <!-- Modals / Overlays -->
+        <div id="reader-view" class="reader-overlay hidden">
+            <div class="reader-header">
+                <a id="external-link" href="#" target="_blank" class="btn-primary">VISIT SOURCE ↗</a>
+                <button id="close-reader" class="btn-close-large">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="reader-content" class="reader-body">
+                <!-- Article content -->
+            </div>
+        </div>
+
+        <div id="modal-container" class="modal-overlay hidden">
+            <!-- Dynamic modals for adding source/folder -->
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>
