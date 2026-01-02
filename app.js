@@ -799,7 +799,8 @@ async function handleSyncConnect(token) {
 
     } catch (e) {
         console.error(e);
-        updateSyncStatus('Connection Failed: ' + e.message, 'error');
+        updateSyncStatus('Connection Failed', 'error');
+        alert('Sync Error: ' + e.message + '\nMake sure your token has "gist" scope.');
         state.githubToken = null;
     }
 }
@@ -853,6 +854,9 @@ async function createGist(token) {
         state.gistId = gist.id;
         localStorage.setItem('orbit_gist_id', gist.id);
         updateSyncStatus('Cloud Config Created & Synced', 'connected');
+    } else {
+        const err = await res.json();
+        throw new Error('Create Gist Failed: ' + (err.message || res.statusText));
     }
 }
 
