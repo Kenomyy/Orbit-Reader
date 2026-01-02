@@ -24,7 +24,13 @@ let state = {
     articles: [],
     displayCount: 20, // Infinite scroll initial count
     increment: 20,
-    feedCache: {} // Cache for performance
+    feedCache: JSON.parse(localStorage.getItem('orbit_feed_cache')) || {}, // Cache for performance
+
+    // Sync State
+    githubToken: localStorage.getItem('orbit_gh_token') || null,
+    gistId: localStorage.getItem('orbit_gist_id') || null,
+    lastSync: localStorage.getItem('orbit_last_sync') || null,
+    isSyncing: false
 };
 
 // DOM Elements
@@ -62,6 +68,11 @@ function init() {
     renderFolders();
     loadActiveFolder();
     setupEventListeners();
+
+    // Auto-sync on startup
+    if (state.githubToken) {
+        setTimeout(() => syncConfig('PULL'), 1000);
+    }
 }
 
 // Icons
@@ -185,6 +196,49 @@ async function loadActiveFolder() {
     } else {
         const folder = state.folders.find(f => f.id === state.activeFolder);
         if (folder) feedsToLoad = folder.feeds.map(f => typeof f === 'string' ? f : f.url);
+    }
+
+    // Render Mobile Source Filter
+    const filterContainer = document.getElementById('mobile-source-filter-container');
+    if (filterContainer) {
+        let sources = [];
+        if (state.activeFolder === 'all') {
+            // Gather all unique sources from all folders
+            const allSources = [];
+            state.folders.forEach(f => {
+                f.feeds.forEach(feed => {
+                    const url = typeof feed === 'string' ? feed : feed.url;
+                    const name = (typeof feed === 'object' && feed.name) ? feed.name : url.replace('https://', '').split('/')[0];
+                    allSources.push({ url, name });
+                });
+            });
+            // Dedup by URL
+            const unique = new Map();
+            allSources.forEach(s => unique.set(s.url, s));
+            sources = Array.from(unique.values());
+        } else {
+            const folder = state.folders.find(f => f.id === state.activeFolder);
+            if (folder) {
+                sources = folder.feeds.map(feed => {
+                    const url = typeof feed === 'string' ? feed : feed.url;
+                    const name = (typeof feed === 'object' && feed.name) ? feed.name : url.replace('https://', '').split('/')[0];
+                    return { url, name };
+                });
+            }
+        }
+
+        if (sources.length > 0) {
+            filterContainer.innerHTML = `
+                <div class="select-wrapper">
+                    <select onchange="window.switchSource(this.value || null)">
+                        <option value="">ALL SOURCES</option>
+                        ${sources.map(s => `<option value="${s.url}" ${state.activeSource === s.url ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        } else {
+            filterContainer.innerHTML = '';
+        }
     }
 
     if (feedsToLoad.length === 0) {
@@ -457,7 +511,7 @@ window.saveRename = (id) => {
     if (newName) {
         const folder = state.folders.find(f => f.id === id);
         if (folder) folder.name = newName;
-        saveState();
+        saveAndSync(); // SYNC TRIGGER
         renderFolders();
         window.closeModal();
     }
@@ -467,7 +521,7 @@ window.deleteFolder = (id) => {
     if (confirm('Delete this folder and all its feeds?')) {
         state.folders = state.folders.filter(f => f.id !== id);
         if (state.activeFolder === id) state.activeFolder = 'all';
-        saveState();
+        saveAndSync(); // SYNC TRIGGER
         renderFolders();
         loadActiveFolder();
         window.closeModal();
@@ -479,6 +533,23 @@ window.openSettingsModal = () => {
         <div class="modal-content">
             <h2 class="display-font">SETTINGS</h2>
             
+            <div class="settings-section">
+                <h3>ORBIT CLOUD (SYNC)</h3>
+                <div class="form-group">
+                    <label>GitHub Personal Access Token (Gist Scope)</label>
+                    <div class="input-with-action">
+                        <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx" value="${state.githubToken || ''}">
+                        <button id="sync-connect-btn" class="btn-primary">CONNECT</button>
+                    </div>
+                    <div id="sync-status" class="sync-status ${state.githubToken ? 'connected' : ''}">
+                        ${state.githubToken ? 'Connected' : 'Disconnected'}
+                    </div>
+                    <small style="color: var(--text-dim); font-size: 0.7rem; display: block; margin-top: 0.5rem;">
+                        Create a Classic Token with <code>gist</code> scope to sync feeds.
+                    </small>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label>Article Font Size (${state.settings.fontSize}px)</label>
                 <input type="range" min="12" max="24" value="${state.settings.fontSize}" 
@@ -696,6 +767,180 @@ function saveState() {
     localStorage.setItem('orbit_settings', JSON.stringify(state.settings));
     localStorage.setItem('orbit_read_articles', JSON.stringify([...state.readArticles]));
 }
+
+
+// --- SYNC LOGIC ---
+
+function updateSyncStatus(msg, type = 'neutral') {
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'sync-status ' + type;
+}
+
+async function handleSyncConnect(token) {
+    updateSyncStatus('Connecting to GitHub...', 'pending');
+
+    try {
+        // Validation request
+        const res = await fetch('https://api.github.com/user', {
+            headers: { 'Authorization': `token ${token}` }
+        });
+
+        if (!res.ok) throw new Error('Invalid Token');
+        const user = await res.json();
+
+        state.githubToken = token;
+        localStorage.setItem('orbit_gh_token', token);
+
+        // Find or Create Gist
+        updateSyncStatus(`Logged in as ${user.login}. Finding Config...`, 'connected');
+        await findOrCreateGist(token);
+
+    } catch (e) {
+        console.error(e);
+        updateSyncStatus('Connection Failed: ' + e.message, 'error');
+        state.githubToken = null;
+    }
+}
+
+async function findOrCreateGist(token) {
+    try {
+        // List gists
+        const res = await fetch('https://api.github.com/gists', {
+            headers: { 'Authorization': `token ${token}` }
+        });
+        const gists = await res.json();
+
+        const configGist = gists.find(g => g.description === 'orbit-reader-config' && g.files['orbit_config.json']);
+
+        if (configGist) {
+            state.gistId = configGist.id;
+            localStorage.setItem('orbit_gist_id', state.gistId);
+            updateSyncStatus('Config Found. Syncing...', 'connected');
+            await syncConfig('PULL');
+        } else {
+            updateSyncStatus('Creating new Config Gist...', 'pending');
+            await createGist(token);
+        }
+    } catch (e) {
+        updateSyncStatus('Gist Error: ' + e.message, 'error');
+    }
+}
+
+async function createGist(token) {
+    const payload = {
+        description: "orbit-reader-config",
+        public: false,
+        files: {
+            "orbit_config.json": {
+                content: JSON.stringify(exportState(), null, 2)
+            }
+        }
+    };
+
+    const res = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: {
+            'Authorization': `token ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+        const gist = await res.json();
+        state.gistId = gist.id;
+        localStorage.setItem('orbit_gist_id', gist.id);
+        updateSyncStatus('Cloud Config Created & Synced', 'connected');
+    }
+}
+
+function exportState() {
+    return {
+        folders: state.folders,
+        settings: state.settings,
+        readArticles: Array.from(state.readArticles),
+        lastUpdated: Date.now()
+    };
+}
+
+async function syncConfig(mode = 'PULL') {
+    if (!state.githubToken || !state.gistId || state.isSyncing) return;
+
+    state.isSyncing = true;
+    const originalText = document.getElementById('sync-status')?.textContent;
+    if (mode === 'PUSH') updateSyncStatus('Syncing to Cloud...', 'pending');
+
+    try {
+        if (mode === 'PUSH') {
+            await fetch(`https://api.github.com/gists/${state.gistId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `token ${state.githubToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    files: {
+                        "orbit_config.json": {
+                            content: JSON.stringify(exportState(), null, 2)
+                        }
+                    }
+                })
+            });
+            updateSyncStatus('Synced to Cloud', 'connected');
+
+        } else { // PULL
+            const res = await fetch(`https://api.github.com/gists/${state.gistId}`, {
+                headers: { 'Authorization': `token ${state.githubToken}` }
+            });
+            const gist = await res.json();
+            if (gist.files['orbit_config.json']) {
+                const cloudConfig = JSON.parse(gist.files['orbit_config.json'].content);
+
+                // Merge logic (Simple overwrite for now, could be smarter)
+                state.folders = cloudConfig.folders || state.folders;
+                state.settings = { ...state.settings, ...cloudConfig.settings };
+                if (cloudConfig.readArticles) {
+                    state.readArticles = new Set([...state.readArticles, ...cloudConfig.readArticles]);
+                }
+
+                // Apply changes
+                saveState();
+                applySettings();
+                renderFolders();
+                updateSyncStatus('Synced from Cloud', 'connected');
+            }
+        }
+    } catch (e) {
+        console.error('Sync Error', e);
+        updateSyncStatus('Sync Error', 'error');
+    } finally {
+        state.isSyncing = false;
+        // Reset status after a few seconds if successful
+        setTimeout(() => {
+            if (document.getElementById('sync-status')?.classList.contains('connected')) {
+                const date = new Date();
+                updateSyncStatus(`Synced: ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`, 'connected');
+            }
+        }, 2000);
+    }
+}
+
+// Helper to trigger save logic
+const saveAndSync = () => {
+    saveState();
+    // Debounce sync slightly?
+    if (state.githubToken) syncConfig('PUSH');
+};
+
+// Global Listener for Sync
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'sync-connect-btn') {
+        const token = document.getElementById('github-token').value.trim();
+        if (token) handleSyncConnect(token);
+    }
+});
 
 // Start
 if (document.readyState === 'loading') {
